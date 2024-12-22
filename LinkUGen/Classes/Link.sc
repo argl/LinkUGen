@@ -6,6 +6,12 @@ LinkTempo : UGen {
 	}
 }
 
+LinkTempoGen : UGen {
+	*kr { 
+		^this.multiNew('control');
+	}
+}
+
 LinkEnabler : UGen {
 	*kr { arg tempo = 60.0;
 		this.multiNew('control', tempo);
