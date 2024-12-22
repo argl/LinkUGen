@@ -10,6 +10,7 @@ set_target_properties(Link PROPERTIES PREFIX "")
 set_target_properties(Link PROPERTIES DEBUG_POSTFIX "_d")
 set_property(TARGET Link PROPERTY LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_LIST_DIR}/LinkUGen")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++17 -DSUPERNOVA")
+target_compile_features(Link PRIVATE cxx_std_17)
 
 if(APPLE)
 	if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
