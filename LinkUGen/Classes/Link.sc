@@ -1,7 +1,7 @@
 
 LinkTempo : UGen {
 	*kr { arg tempo, env;
-		this.multiNew('control', tempo,env);
+		this.multiNew('control', tempo, env);
 		^0.0;
 	}
 }
@@ -44,7 +44,8 @@ Link : UGen {
 	}
 
 	*kr {
-		^this.multiNew('control');
+		arg latency = 0.0;
+		^this.multiNew('control', latency);
 	}
 
 	*quantum {
@@ -59,8 +60,8 @@ Link : UGen {
 }
 
 LinkCount : UGen {
-	*kr { arg divistion = 1;
-		var count = Link.kr;
+	*kr { arg divistion = 1, latency = 0.0;
+		var count = Link.kr(latency: latency);
 		var quantum = Link.quantum;
 		var ratio = 1.0 / quantum;
 		count = count / ratio;
@@ -70,9 +71,9 @@ LinkCount : UGen {
 
 
 LinkTrig : UGen {
-	*kr { arg division = 1;
-		var count = LinkCount.kr(division);
-		^Changed.kr(count - Latch.kr(count,1));
+	*kr { arg division = 1, latency = 0.0;
+		var count = LinkCount.kr(division, latency);
+		^Changed.kr(count - Latch.kr(count, 1));
 	}
 }
 

@@ -77,6 +77,7 @@ void LinkDisabler_next(LinkDisabler *unit, int inNumSamples)
 struct Link : public Unit
 {
   float mLastBeat;
+  float mLatencyUs;
 };
 
 extern "C"
@@ -92,15 +93,18 @@ void Link_Ctor(Link *unit)
     Print("warn: Link not enabled!\n");
   }
   unit->mLastBeat = 0.0;
+  unit->mLatencyUs = *IN(0);
   SETCALC(Link_next);
 }
 
 void Link_next(Link *unit, int inNumSamples)
 {
+  unit->mLatencyUs = *IN(0);
   float *output = OUT(0);
   if (gLink)
   {
-    const auto time = gLink->clock().micros();
+    const auto latency_us = std::chrono::microseconds(static_cast<long long>(unit->mLatencyUs));
+    const auto time = gLink->clock().micros() + latency_us;
     auto timeline = gLink->captureAudioSessionState();
     const auto beats = timeline.beatAtTime(time, 4);
     *output = static_cast<float>(beats);
