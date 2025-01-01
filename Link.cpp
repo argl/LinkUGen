@@ -8,6 +8,7 @@
 static InterfaceTable *ft;
 
 static ableton::Link *gLink = nullptr;
+static std::chrono::microseconds gLatency = std::chrono::microseconds(0);
 static float gTempo = 60.0;
 
 // ========================================================================================================
@@ -28,6 +29,8 @@ extern "C"
 
 void LinkEnabler_Ctor(LinkEnabler *unit)
 {
+  gLatency = std::chrono::microseconds(static_cast<long long>(*IN(1)));
+  Print("Link latency set to %d\n", gLatency.count());
   if (!gLink)
   {
     gTempo = *IN(0);
@@ -77,7 +80,6 @@ void LinkDisabler_next(LinkDisabler *unit, int inNumSamples)
 struct Link : public Unit
 {
   float mLastBeat;
-  float mLatencyUs;
 };
 
 extern "C"
@@ -93,18 +95,15 @@ void Link_Ctor(Link *unit)
     Print("warn: Link not enabled!\n");
   }
   unit->mLastBeat = 0.0;
-  unit->mLatencyUs = *IN(0);
   SETCALC(Link_next);
 }
 
 void Link_next(Link *unit, int inNumSamples)
 {
-  unit->mLatencyUs = *IN(0);
   float *output = OUT(0);
   if (gLink)
   {
-    const auto latency_us = std::chrono::microseconds(static_cast<long long>(unit->mLatencyUs));
-    const auto time = gLink->clock().micros() + latency_us;
+    const auto time = gLink->clock().micros() + gLatency;
     auto timeline = gLink->captureAudioSessionState();
     const auto beats = timeline.beatAtTime(time, 4);
     *output = static_cast<float>(beats);

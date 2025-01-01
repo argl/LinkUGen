@@ -13,8 +13,8 @@ LinkTempoGen : UGen {
 }
 
 LinkEnabler : UGen {
-	*kr { arg tempo = 60.0;
-		this.multiNew('control', tempo);
+	*kr { arg tempo = 60.0, latency=0;
+		this.multiNew('control', tempo, latency);
 		^0.0;
 	}
 }
@@ -29,9 +29,9 @@ LinkDisabler : UGen {
 
 
 Link : UGen {
-	*enable { arg tempo = 60.0;
+	*enable { arg tempo = 60.0, latency=0;
 		play {
-			LinkEnabler.kr(tempo);
+			LinkEnabler.kr(tempo, latency);
 			FreeSelf.kr(Impulse.kr(1));
 		}
 	}
@@ -44,8 +44,7 @@ Link : UGen {
 	}
 
 	*kr {
-		arg latency = 0.0;
-		^this.multiNew('control', latency);
+		^this.multiNew('control');
 	}
 
 	*quantum {
