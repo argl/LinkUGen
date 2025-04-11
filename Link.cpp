@@ -17,6 +17,7 @@ static float gTempo = 60.0;
 //
 // ========================================================================================================
 
+// --- LinkEnabler ---
 struct LinkEnabler : public Unit
 {
 };
@@ -30,7 +31,7 @@ extern "C"
 void LinkEnabler_Ctor(LinkEnabler *unit)
 {
   gLatency = std::chrono::microseconds(static_cast<long long>(*IN(1)));
-  Print("Link latency set to %d\n", gLatency.count());
+  Print("Link latency set to %lld us\n", gLatency.count()); // Use %lld for long long
   if (!gLink)
   {
     gTempo = *IN(0);
@@ -39,15 +40,18 @@ void LinkEnabler_Ctor(LinkEnabler *unit)
   }
   else
   {
-    // std::cout<<"Link already running"<<std::endl;
+    Print("Link already running\n");
   }
   SETCALC(LinkEnabler_next);
+  // No output needed, make sure it's zeroed
+  ZOUT0(0);
 }
-
 void LinkEnabler_next(LinkEnabler *unit, int inNumSamples)
 {
+  // This UGen doesn't produce output, it's just for setup.
 }
 
+// --- LinkDisabler ---
 struct LinkDisabler : public Unit
 {
 };
@@ -68,37 +72,65 @@ void LinkDisabler_Ctor(LinkDisabler *unit)
   }
   else
   {
-    // std::cout<<"Link not running"<<std::endl;
   }
   SETCALC(LinkDisabler_next);
+  // No output needed, make sure it's zeroed
+  ZOUT0(0);
 }
 
 void LinkDisabler_next(LinkDisabler *unit, int inNumSamples)
 {
+  // This UGen doesn't produce output, it's just for teardown.
 }
 
+// --- Link (Beat) ---
 struct Link : public Unit
 {
   float mLastBeat;
+  double mSampleDur;                      // Store sample duration (1.0 / sampleRate)
+  std::chrono::microseconds mStartMicros; // Store start time for the block
 };
 
 extern "C"
 {
   void Link_Ctor(Link *unit);
-  void Link_next(Link *unit, int inNumSamples);
+  void Link_next_k(Link *unit, int inNumSamples); // Renamed for clarity
+  void Link_next_a(Link *unit, int inNumSamples); // Audio rate version
 }
 
 void Link_Ctor(Link *unit)
 {
   if (!gLink)
   {
-    Print("warn: Link not enabled!\n");
+    Print("warn: Link not enabled! Link UGen will output 0.\n");
+    unit->mLastBeat = 0.0;
   }
-  unit->mLastBeat = 0.0;
-  SETCALC(Link_next);
+  else
+  {
+    // Initialize with current beat
+    const auto time = gLink->clock().micros() + gLatency;
+    auto timeline = gLink->captureAudioSessionState();
+    unit->mLastBeat = static_cast<float>(timeline.beatAtTime(time, 4));
+  }
+
+  unit->mSampleDur = 1.0 / unit->mWorld->mSampleRate; // Store 1/sr
+
+  // Determine calculation function based on rate
+  if (INRATE(0) == calc_FullRate)
+  {
+    SETCALC(Link_next_a);
+    // Initialize start time for the first block
+    unit->mStartMicros = gLink->clock().micros() + gLatency;
+    Link_next_a(unit, 1); // Calculate initial value
+  }
+  else
+  {
+    SETCALC(Link_next_k);
+    Link_next_k(unit, 1); // Calculate initial value
+  }
 }
 
-void Link_next(Link *unit, int inNumSamples)
+void Link_next_k(Link *unit, int inNumSamples)
 {
   float *output = OUT(0);
   if (gLink)
@@ -111,7 +143,38 @@ void Link_next(Link *unit, int inNumSamples)
   }
   else
   {
-    *output = unit->mLastBeat;
+    *output = unit->mLastBeat; // Output last known beat or 0 if never enabled
+  }
+}
+
+// Audio Rate Calculation
+void Link_next_a(Link *unit, int inNumSamples)
+{
+  float *output = OUT(0);
+  if (gLink)
+  {
+    auto timeline = gLink->captureAudioSessionState();
+    // Use the correctly stored sample duration
+    double sampleDurMicros = unit->mSampleDur * 1e6; // Sample duration in microseconds
+
+    for (int i = 0; i < inNumSamples; ++i)
+    {
+      // Calculate time for the current sample
+      const auto sampleTime = unit->mStartMicros + std::chrono::microseconds(static_cast<long long>(i * sampleDurMicros));
+      const auto beats = timeline.beatAtTime(sampleTime, 4);
+      output[i] = static_cast<float>(beats);
+    }
+    // Update start time for the next block
+    unit->mStartMicros += std::chrono::microseconds(static_cast<long long>(inNumSamples * sampleDurMicros));
+    unit->mLastBeat = output[inNumSamples - 1]; // Store last beat of the block
+  }
+  else
+  {
+    // Fill with last known beat or 0 if never enabled
+    for (int i = 0; i < inNumSamples; ++i)
+    {
+      output[i] = unit->mLastBeat;
+    }
   }
 }
 

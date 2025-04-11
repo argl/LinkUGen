@@ -29,9 +29,9 @@ LinkDisabler : UGen {
 
 
 Link : UGen {
-	*enable { arg tempo = 60.0, latency=0;
+	*enable { arg tempo = 60.0;
 		play {
-			LinkEnabler.kr(tempo, latency);
+			LinkEnabler.kr(tempo);
 			FreeSelf.kr(Impulse.kr(1));
 		}
 	}
@@ -47,6 +47,10 @@ Link : UGen {
 		^this.multiNew('control');
 	}
 
+	*ar {
+		^this.multiNew('audio');
+	}
+
 	*quantum {
 		^96;
 	}
@@ -59,20 +63,33 @@ Link : UGen {
 }
 
 LinkCount : UGen {
-	*kr { arg divistion = 1, offset = 0.0, latency = 0.0;
-		var count = Link.kr(latency: latency) + offset;
+	*kr { arg divistion = 1, offset = 0.0;
+		var count = Link.kr() + offset;
 		var quantum = Link.quantum;
 		var ratio = 1.0 / quantum;
 		count = count / ratio;
 		^(count / (quantum / divistion)).floor;
 	}
+
+	*ar { arg divistion = 1, offset = 0.0;
+		var count = Link.ar() + offset;
+		var quantum = Link.quantum;
+		var ratio = 1.0 / quantum;
+		count = count / ratio;
+		^(count / (quantum / divistion)).floor;
+	}
+
 }
 
 
 LinkTrig : UGen {
-	*kr { arg division = 1, offset=0.0, latency = 0.0;
-		var count = LinkCount.kr(division, offset, latency);
+	*kr { arg division = 1, offset=0.0;
+		var count = LinkCount.kr(division, offset);
 		^Changed.kr(count - Latch.kr(count, 1));
+	}
+	*ar { arg division = 1, offset=0.0;
+		var count = LinkCount.ar(division, offset);
+		^Changed.ar(count - Latch.ar(count, 1));
 	}
 }
 
@@ -82,6 +99,12 @@ LinkLane : UGen {
 		^Mix(lane.collect({|item|
 			var isEq = (LinkCount.kr(div) % max eq: item);
 			Changed.kr(isEq) * isEq;
+		}));
+	}
+	*ar { arg div = 1, max = 4, lane = [];
+		^Mix(lane.collect({|item|
+			var isEq = (LinkCount.ar(div) % max eq: item);
+			Changed.ar(isEq) * isEq;
 		}));
 	}
 }
