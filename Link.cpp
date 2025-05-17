@@ -160,6 +160,7 @@ struct LinkTempoGen : public Unit
 {
   // double mCurTempo;
   // double mTempoCalc;
+    static int sLastBufCounter;
 };
 
 extern "C"
@@ -190,6 +191,7 @@ void LinkTempoGen_next(LinkTempoGen *unit, int inNumSamples)
   float *output = OUT(0);
   if (gLink)
   {
+    int currentBufCounter = mWorld->mBufCounter;
     auto timeline = gLink->captureAudioSessionState();
     *output = static_cast<float>(timeline.tempo());
   }
