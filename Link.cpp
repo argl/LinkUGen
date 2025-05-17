@@ -158,9 +158,8 @@ void LinkTempo_next(LinkTempo *unit, int inNumSamples)
 
 struct LinkTempoGen : public Unit
 {
-  // double mCurTempo;
-  // double mTempoCalc;
-    static int sLastBufCounter;
+  // static ableton::BasicLink<double> sAudioSessionState;
+  // static int sLastBufCounter;
 };
 
 extern "C"
@@ -178,6 +177,7 @@ void LinkTempoGen_Ctor(LinkTempoGen *unit)
   }
   else
   {
+    // sLastBufCounter = 0;
     // const auto timeline = gLink->captureAudioSessionState();
     // unit->mCurTempo = timeline.tempo();
     // unit->mTempoCalc = unit->mCurTempo - *IN(0);
@@ -191,7 +191,15 @@ void LinkTempoGen_next(LinkTempoGen *unit, int inNumSamples)
   float *output = OUT(0);
   if (gLink)
   {
-    int currentBufCounter = mWorld->mBufCounter;
+    // int currentBufCounter = mWorld->mBufCounter;
+    // if (currentBufCounter != sLastBufCounter)
+    // {
+    //   unit->sAudioSessionState = gLink->captureAudioSessionState();
+    //   sLastBufCounter = currentBufCounter;
+    // }
+    // auto timeline = sAudioSessionState;
+
+    // int currentBufCounter = mWorld->mBufCounter;
     auto timeline = gLink->captureAudioSessionState();
     *output = static_cast<float>(timeline.tempo());
   }
