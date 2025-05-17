@@ -104,7 +104,7 @@ void Link_next(Link *unit, int inNumSamples)
   if (gLink)
   {
     const auto time = gLink->clock().micros() + gLatency;
-    auto timeline = gLink->captureAudioSessionState();
+    auto timeline = gLink->captureAppSessionState();
     const auto beats = timeline.beatAtTime(time, 4);
     *output = static_cast<float>(beats);
     unit->mLastBeat = *output;
@@ -136,7 +136,7 @@ void LinkTempo_Ctor(LinkTempo *unit)
   }
   else
   {
-    const auto timeline = gLink->captureAudioSessionState();
+    const auto timeline = gLink->captureAppSessionState();
     unit->mCurTempo = timeline.tempo();
     unit->mTempoCalc = unit->mCurTempo - *IN(0);
   }
@@ -148,7 +148,7 @@ void LinkTempo_next(LinkTempo *unit, int inNumSamples)
 {
   if (gLink)
   {
-    auto timeline = gLink->captureAudioSessionState();
+    auto timeline = gLink->captureAppSessionState();
     timeline.setTempo(unit->mCurTempo - (*IN(1) * unit->mTempoCalc), gLink->clock().micros());
     gLink->commitAudioSessionState(timeline);
   }
@@ -178,7 +178,7 @@ void LinkTempoGen_Ctor(LinkTempoGen *unit)
   else
   {
     // sLastBufCounter = 0;
-    // const auto timeline = gLink->captureAudioSessionState();
+    // const auto timeline = gLink->captureAppSessionState();
     // unit->mCurTempo = timeline.tempo();
     // unit->mTempoCalc = unit->mCurTempo - *IN(0);
   }
@@ -194,13 +194,13 @@ void LinkTempoGen_next(LinkTempoGen *unit, int inNumSamples)
     // int currentBufCounter = mWorld->mBufCounter;
     // if (currentBufCounter != sLastBufCounter)
     // {
-    //   unit->sAudioSessionState = gLink->captureAudioSessionState();
+    //   unit->sAudioSessionState = gLink->captureAppSessionState();
     //   sLastBufCounter = currentBufCounter;
     // }
     // auto timeline = sAudioSessionState;
 
     // int currentBufCounter = mWorld->mBufCounter;
-    auto timeline = gLink->captureAudioSessionState();
+    auto timeline = gLink->captureAppSessionState();
     *output = static_cast<float>(timeline.tempo());
   }
   else
