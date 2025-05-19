@@ -1,5 +1,7 @@
 
 #include <ableton/Link.hpp>
+#include <ableton/link/HostTimeFilter.hpp>
+#include <ableton/platforms/Config.hpp>
 #include <chrono>
 #include <iostream>
 #include "SC_Unit.h"
@@ -80,6 +82,7 @@ void LinkDisabler_next(LinkDisabler *unit, int inNumSamples)
 struct Link : public Unit
 {
   float mLastBeat;
+  ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
 };
 
 extern "C"
@@ -110,12 +113,12 @@ void Link_next(Link *unit, int inNumSamples)
     int currentBufCounter = unit->mWorld->mBufCounter;
 
     if (currentBufCounter != sLastBufCounter) {
-        // Print("======= new bufcounter %d!\n", currentBufCounter);
         sLastBufCounter = currentBufCounter;
-        const auto time = gLink->clock().micros() + gLatency;
+        // use the sample time from supercollider and convert to host time
+        uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
+        const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
         auto timeline = gLink->captureAudioSessionState();
-
-        const auto beats = timeline.beatAtTime(time, 4);
+        const auto beats = timeline.beatAtTime(hostTime, 4);
         *output = static_cast<float>(beats);
         unit->mLastBeat = *output;
         sLastBeat = *output;
