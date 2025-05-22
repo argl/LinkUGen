@@ -121,7 +121,7 @@ void Link_next(Link *unit, int inNumSamples)
         const auto beats = timeline.beatAtTime(hostTime, 4);
         *output = static_cast<float>(beats);
         unit->mLastBeat = *output;
-        sLastBeat = *output;
+        // sLastBeat = *output;
     // } else {
     //     *output = static_cast<float>(sLastBeat);
     // }
