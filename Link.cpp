@@ -105,15 +105,15 @@ void Link_Ctor(Link *unit)
 void Link_next(Link *unit, int inNumSamples)
 {
   float *output = OUT(0);
-  static int sLastBufCounter = -1;
-  static double sLastBeat = 0.0;
+  // static int sLastBufCounter = -1;
+  // static double sLastBeat = 0.0;
 
   if (gLink)
   {
     int currentBufCounter = unit->mWorld->mBufCounter;
 
-    if (currentBufCounter != sLastBufCounter) {
-        sLastBufCounter = currentBufCounter;
+    // if (currentBufCounter != sLastBufCounter) {
+        // sLastBufCounter = currentBufCounter;
         // use the sample time from supercollider and convert to host time
         uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
         const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
@@ -122,9 +122,9 @@ void Link_next(Link *unit, int inNumSamples)
         *output = static_cast<float>(beats);
         unit->mLastBeat = *output;
         sLastBeat = *output;
-    } else {
-        *output = static_cast<float>(sLastBeat);
-    }
+    // } else {
+    //     *output = static_cast<float>(sLastBeat);
+    // }
   }
   else
   {
