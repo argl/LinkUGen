@@ -110,8 +110,6 @@ void Link_next(Link *unit, int inNumSamples)
 
   if (gLink)
   {
-    int currentBufCounter = unit->mWorld->mBufCounter;
-
     // if (currentBufCounter != sLastBufCounter) {
         // sLastBufCounter = currentBufCounter;
         // use the sample time from supercollider and convert to host time
@@ -234,37 +232,37 @@ struct LinkGrid : public Unit
   // State machine
   LinkGridState mState;
   LinkGridState mLastState;
-  
+
   // Input tracking
   bool mLastEnabled;
-  
+
   // Grid tracking
   double mLastBeat;
   double mGridSize;
   double mBeats;      // beats in beat units
   int mGridCounter;
-  
+
   // Independent beat tracking
   double mBeatStartBeat;  // track in Link beats
   int mBeatCounter;
   double mBeatInterval;   // Beat interval in Link beats
-  
+
   // Trigger states
   bool mGridTrigger;
   bool mBeatTrigger;
   bool mSignalTrigger;
   bool mDoneTrigger;
-  
+
   // Envelope states
   double mEnabledEnv;
   double mSignalEnv;
-  
+
   // Timing
   double mSignalStartBeat;
-  
+
   // Link beat tracking (like basic Link ugen)
   double mLastLinkBeat;
-  
+
   ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
 };
 
@@ -280,45 +278,45 @@ void LinkGrid_Ctor(LinkGrid *unit)
   {
     Print("warn: Link not enabled for LinkGrid!\n");
   }
-  
+
   // Initialize state machine
   unit->mState = IDLE;
   unit->mLastState = IDLE;
-  
+
   // Initialize input tracking
   unit->mLastEnabled = false;
-  
+
   // Initialize parameters from inputs
   unit->mGridSize = *IN(1);     // Grid size in beats
   unit->mBeats = *IN(2);        // beats in beat units
-  
+
   // Calculate beat interval in Link beats
   unit->mBeatInterval = unit->mBeats;
-  
+
   // Initialize tracking
   unit->mLastBeat = 0.0;
   unit->mGridCounter = 0;
-  
+
   // Initialize beat tracking
   unit->mBeatStartBeat = 0.0;   // track in Link beats
   unit->mBeatCounter = 0;
-  
+
   // Initialize triggers
   unit->mGridTrigger = false;
   unit->mBeatTrigger = false;
   unit->mSignalTrigger = false;
   unit->mDoneTrigger = false;
-  
+
   // Initialize envelopes
   unit->mEnabledEnv = 0.0;
   unit->mSignalEnv = 0.0;
-  
+
   // Initialize timing
   unit->mSignalStartBeat = 0.0;
-  
+
   // Initialize Link beat tracking
   unit->mLastLinkBeat = 0.0;
-  
+
   SETCALC(LinkGrid_next);
 }
 
@@ -334,16 +332,16 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
   float *stateOut = OUT(6);
   float *sigEnvLengthOut = OUT(7);  // Signal envelope length using tempo formula
   float *linkBeatOut = OUT(8);      // Current Link beat
-  
+
   // Inputs
   bool enabled = *IN(0) > 0.5f;
-  
+
   // Reset triggers at start of each sample
   unit->mGridTrigger = false;
   unit->mBeatTrigger = false;
   unit->mSignalTrigger = false;
   unit->mDoneTrigger = false;
-  
+
   if (gLink)
   {
     // Get current beat position and Link tempo
@@ -352,25 +350,25 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(hostTime, 4);
     const double currentTempo = timeline.tempo(); // Get current Link tempo like LinkTempoGen
-    
+
     // Update Link beat output (replicate basic Link ugen functionality)
     unit->mLastLinkBeat = currentBeat;
-    
+
     // Detect grid trigger
     bool gridBoundaryHit = false;
     double gridPosition = fmod(currentBeat, unit->mGridSize);
     double lastGridPosition = fmod(unit->mLastBeat, unit->mGridSize);
-    
-    if (gridPosition < lastGridPosition || 
+
+    if (gridPosition < lastGridPosition ||
         (lastGridPosition < 0.01 && gridPosition > unit->mGridSize - 0.01))
     {
       gridBoundaryHit = true;
       unit->mGridCounter++;
     }
-    
+
     // Store previous state for transition detection
     unit->mLastState = unit->mState;
-    
+
     // STATE MACHINE LOGIC
     switch (unit->mState)
     {
@@ -381,7 +379,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
           Print("LinkGrid: IDLE -> WAITING_TO_START\n");
         }
         break;
-        
+
       case WAITING_TO_START:
         if (!enabled) {
           // Disabled before we started - go back to idle
@@ -398,7 +396,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
           Print("LinkGrid: WAITING_TO_START -> RUNNING at beat %f\n", currentBeat);
         }
         break;
-        
+
       case RUNNING:
         if (!enabled) {
           // Disable signal received - transition to stopping
@@ -406,7 +404,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
           Print("LinkGrid: RUNNING -> STOPPING\n");
         }
         break;
-        
+
       case STOPPING:
         if (enabled) {
           // Re-enabled while stopping - go back to running
@@ -422,65 +420,68 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
         }
         break;
     }
-    
+
     // STATE-BASED OUTPUTS
     switch (unit->mState)
     {
       case IDLE:
         unit->mSignalEnv = 0.0;
         break;
-        
+
       case WAITING_TO_START:
         unit->mSignalEnv = 0.0;
         break;
-        
+
       case RUNNING:
-        unit->mSignalEnv = 1.0;
-        
-        // Generate grid triggers
-        if (gridBoundaryHit) {
-          unit->mGridTrigger = true;
-        }
-        
-        // Generate independent beat triggers using Link beats
-        double beatsElapsed = currentBeat - unit->mBeatStartBeat;
-        if (beatsElapsed < 0) {
-          // Handle beat wraparound
-          beatsElapsed = 0;
-        }
-        
-        // Calculate how many beat intervals have passed
-        int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
-        
-        if (expectedBeatCount > unit->mBeatCounter) {
-          unit->mBeatTrigger = true;
-          unit->mBeatCounter = expectedBeatCount;
+        {
+          unit->mSignalEnv = 1.0;
+          
+          // Generate grid triggers
+          if (gridBoundaryHit) {
+            unit->mGridTrigger = true;
+          }
+          
+          // Generate independent beat triggers using Link beats
+          double beatsElapsed = currentBeat - unit->mBeatStartBeat;
+          if (beatsElapsed < 0) {
+            // Handle beat wraparound
+            beatsElapsed = 0;
+          }
+          
+          // Calculate how many beat intervals have passed
+          int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
+          
+          if (expectedBeatCount > unit->mBeatCounter) {
+            unit->mBeatTrigger = true;
+            unit->mBeatCounter = expectedBeatCount;
+          }
         }
         break;
         
       case STOPPING:
-        // Continue generating triggers until we stop
-        if (gridBoundaryHit) {
-          unit->mGridTrigger = true;
+        {
+          // Continue generating triggers until we stop
+          if (gridBoundaryHit) {
+            unit->mGridTrigger = true;
+          }
+          
+          // Continue beat triggers
+          double beatsElapsed = currentBeat - unit->mBeatStartBeat;
+          if (beatsElapsed < 0) {
+            beatsElapsed = 0;
+          }
+          
+          int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
+          
+          if (expectedBeatCount > unit->mBeatCounter) {
+            unit->mBeatTrigger = true;
+            unit->mBeatCounter = expectedBeatCount;
+          }
         }
-        
-        // Continue beat triggers
-        double beatsElapsed = currentBeat - unit->mBeatStartBeat;
-        if (beatsElapsed < 0) {
-          beatsElapsed = 0;
-        }
-        
-        int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
-        
-        if (expectedBeatCount > unit->mBeatCounter) {
-          unit->mBeatTrigger = true;
-          unit->mBeatCounter = expectedBeatCount;
-        }
-        
         break;
     }
-    
-    
+
+
     // Update enabled envelope based on state
     switch (unit->mState) {
       case IDLE:
@@ -494,7 +495,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
         unit->mEnabledEnv = 1.0;
         break;
     }
-    
+
     // Calculate signal envelope length using tempo formula: (1/tempo) * 60 * beats
     double sigEnvLength = 0.0;
     if (unit->mState == RUNNING || unit->mState == STOPPING) {
@@ -507,11 +508,11 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
       // Uses Link tempo automatically
       sigEnvLength = (1.0 / currentTempo) * 60.0 * beatsElapsed;
     }
-    
+
     // Update state
     unit->mLastBeat = currentBeat;
     unit->mLastEnabled = enabled;
-    
+
     // Output values
     *gridTrigOut = unit->mGridTrigger ? 1.0f : 0.0f;
     *beatTrigOut = unit->mBeatTrigger ? 1.0f : 0.0f;
