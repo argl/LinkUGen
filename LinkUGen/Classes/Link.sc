@@ -85,3 +85,89 @@ LinkLane : UGen {
 		}));
 	}
 }
+
+LinkGrid : MultiOutUGen {
+	*kr { arg enabled = 0, gridSize = 4.0, beats = 16.0;
+		^this.multiNew('control', enabled, gridSize, beats);
+	}
+	
+	init { arg ... theInputs;
+		inputs = theInputs;
+		^this.initOutputs(9, 'control');
+	}
+	
+	gridTrig {
+		^this.outputs[0];
+	}
+	
+	beatTrig {
+		^this.outputs[1];
+	}
+	
+	enabledEnv {
+		^this.outputs[2];
+	}
+	
+	signalTrig {
+		^this.outputs[3];
+	}
+	
+	signalEnv {
+		^this.outputs[4];
+	}
+	
+	done {
+		^this.outputs[5];
+	}
+	
+	state {
+		^this.outputs[6];
+	}
+	
+	sigEnvLength {
+		^this.outputs[7];
+	}
+	
+	beat {
+		^this.outputs[8];
+	}
+	
+	// Convenience methods for state checking
+	isIdle {
+		^this.state == 0;
+	}
+	
+	isWaiting {
+		^this.state == 1;
+	}
+	
+	isRunning {
+		^this.state == 2;
+	}
+	
+	isStopping {
+		^this.state == 3;
+	}
+}
+
+// Convenience class for easier LinkGrid usage
+LinkGridSequencer {
+	*kr { arg enabled = 0, gridSize = 0.25, beats = 1.0;
+		var grid = LinkGrid.kr(enabled, gridSize, beats);
+		^(
+			gridTrig: grid.gridTrig,
+			beatTrig: grid.beatTrig,
+			enabledEnv: grid.enabledEnv,
+			signalTrig: grid.signalTrig,
+			signalEnv: grid.signalEnv,
+			done: grid.done,
+			state: grid.state,
+			sigEnvLength: grid.sigEnvLength,
+			beat: grid.beat,
+			isIdle: grid.isIdle,
+			isWaiting: grid.isWaiting,
+			isRunning: grid.isRunning,
+			isStopping: grid.isStopping
+		);
+	}
+}
