@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 2.6)
-CMAKE_POLICY(SET CMP0042 OLD)
+cmake_minimum_required(VERSION 3.5)
+# CMAKE_POLICY(SET CMP0042 OLD)
 
 project(Link)
 
