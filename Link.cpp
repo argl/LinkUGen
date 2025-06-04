@@ -110,8 +110,6 @@ void Link_next(Link *unit, int inNumSamples)
 
   if (gLink)
   {
-    // if (currentBufCounter != sLastBufCounter) {
-        // sLastBufCounter = currentBufCounter;
         // use the sample time from supercollider and convert to host time
         uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
         const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
@@ -119,10 +117,6 @@ void Link_next(Link *unit, int inNumSamples)
         const auto beats = timeline.beatAtTime(hostTime, 4);
         *output = static_cast<float>(beats);
         unit->mLastBeat = *output;
-        // sLastBeat = *output;
-    // } else {
-    //     *output = static_cast<float>(sLastBeat);
-    // }
   }
   else
   {
@@ -317,6 +311,8 @@ void LinkGrid_Ctor(LinkGrid *unit)
   // Initialize Link beat tracking
   unit->mLastLinkBeat = 0.0;
 
+  Print("LinkGrid setup: %.3f %.3f\n", unit->mGridSize, unit->mBeats);
+
   SETCALC(LinkGrid_next);
 }
 
@@ -350,6 +346,8 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(hostTime, 4);
     const double currentTempo = timeline.tempo(); // Get current Link tempo like LinkTempoGen
+
+    Print("currentBeat %.3f\n", currentBeat, currentTempo);
 
     // Update Link beat output (replicate basic Link ugen functionality)
     unit->mLastLinkBeat = currentBeat;
@@ -435,44 +433,44 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
       case RUNNING:
         {
           unit->mSignalEnv = 1.0;
-          
+
           // Generate grid triggers
           if (gridBoundaryHit) {
             unit->mGridTrigger = true;
           }
-          
+
           // Generate independent beat triggers using Link beats
           double beatsElapsed = currentBeat - unit->mBeatStartBeat;
           if (beatsElapsed < 0) {
             // Handle beat wraparound
             beatsElapsed = 0;
           }
-          
+
           // Calculate how many beat intervals have passed
           int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
-          
+
           if (expectedBeatCount > unit->mBeatCounter) {
             unit->mBeatTrigger = true;
             unit->mBeatCounter = expectedBeatCount;
           }
         }
         break;
-        
+
       case STOPPING:
         {
           // Continue generating triggers until we stop
           if (gridBoundaryHit) {
             unit->mGridTrigger = true;
           }
-          
+
           // Continue beat triggers
           double beatsElapsed = currentBeat - unit->mBeatStartBeat;
           if (beatsElapsed < 0) {
             beatsElapsed = 0;
           }
-          
+
           int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
-          
+
           if (expectedBeatCount > unit->mBeatCounter) {
             unit->mBeatTrigger = true;
             unit->mBeatCounter = expectedBeatCount;
