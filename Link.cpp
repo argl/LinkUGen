@@ -340,15 +340,22 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
   if (gLink)
   {
-    // Get current beat position and Link tempo
+
+#ifdef USE_HOST_TIME_FILTER
+      // Get current beat position and Link tempo
     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
     const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(hostTime, 4);
     const double currentTempo = timeline.tempo(); // Get current Link tempo like LinkTempoGen
 
-    Print("currentBeat %.3f\n", currentBeat, currentTempo);
-
+    Print("currentBeat %.3f %.3f\n", currentBeat, currentTempo);
+#else
+    const auto time = gLink->clock().micros();
+    auto timeline = gLink->captureAudioSessionState();
+    const double currentBeat = timeline.beatAtTime(time, 4);
+    const double currentTempo = timeline.tempo(); // Get current Link tempo like LinkTempoGen
+#endif
     // Update Link beat output (replicate basic Link ugen functionality)
     unit->mLastLinkBeat = currentBeat;
 
