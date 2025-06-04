@@ -13,6 +13,9 @@ static ableton::Link *gLink = nullptr;
 static std::chrono::microseconds gLatency = std::chrono::microseconds(0);
 static float gTempo = 60.0;
 
+// Temporary debug flag - set to true to force clock timing
+static bool gForceClockTiming = true;
+
 // ========================================================================================================
 //
 // Link Interface for SuperCollider
@@ -83,6 +86,8 @@ struct Link : public Unit
 {
   float mLastBeat;
   ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
+  bool mUseHostTimeFilter;
+  bool mHostTimeFilterInitialized;
 };
 
 extern "C"
@@ -97,34 +102,86 @@ void Link_Ctor(Link *unit)
   {
     Print("warn: Link not enabled!\n");
   }
-  // Print("======= Hello from LinkUgen!\n");
+
   unit->mLastBeat = 0.0;
+  unit->mHostTimeFilterInitialized = false;
+  unit->mUseHostTimeFilter = true; // Default to sample-accurate timing
+
+  // Initialize HostTimeFilter
+  try {
+    unit->mHostTimeFilter.reset();
+    unit->mHostTimeFilterInitialized = true;
+    Print("Link: HostTimeFilter initialized\n");
+  }
+  catch (...) {
+    Print("Link: Failed to initialize HostTimeFilter, falling back to clock timing\n");
+    unit->mUseHostTimeFilter = false;
+    unit->mHostTimeFilterInitialized = false;
+  }
+
   SETCALC(Link_next);
 }
 
 void Link_next(Link *unit, int inNumSamples)
 {
   float *output = OUT(0);
-  // static int sLastBufCounter = -1;
-  // static double sLastBeat = 0.0;
 
   if (gLink)
   {
-    int currentBufCounter = unit->mWorld->mBufCounter;
-
-    // if (currentBufCounter != sLastBufCounter) {
-        // sLastBufCounter = currentBufCounter;
-        // use the sample time from supercollider and convert to host time
+    if (!gForceClockTiming && unit->mUseHostTimeFilter && unit->mHostTimeFilterInitialized) {
+      try {
+        // Calculate sample-accurate host time using current clock time as reference
         uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
-        const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
+        auto currentClockTime = gLink->clock().micros();
+
+        // Convert sample offset to time offset
+        double sampleRate = unit->mWorld->mSampleRate;
+        auto sampleOffset = static_cast<double>(unit->mWorld->mSampleOffset);
+        auto timeOffsetMicros = static_cast<long long>((sampleOffset / sampleRate) * 1000000.0);
+
+        // Use clock time with sample-accurate offset
+        auto hostTime = currentClockTime + std::chrono::microseconds(timeOffsetMicros);
         auto timeline = gLink->captureAudioSessionState();
         const auto beats = timeline.beatAtTime(hostTime, 4);
         *output = static_cast<float>(beats);
         unit->mLastBeat = *output;
-        // sLastBeat = *output;
-    // } else {
-    //     *output = static_cast<float>(sLastBeat);
-    // }
+
+        // Debug output every 500 buffers to compare with clock timing
+        static int debugCounter = 0;
+        if (++debugCounter % 500 == 0) {
+          auto clockTime = gLink->clock().micros();
+          auto clockTimeline = gLink->captureAudioSessionState();
+          auto clockBeats = clockTimeline.beatAtTime(clockTime, 4);
+
+          Print("Link Sample-Accurate Debug:\n");
+          Print("  SampleOffset=%d, timeOffsetMicros=%lld\n", unit->mWorld->mSampleOffset, timeOffsetMicros);
+          Print("  hostTime=%llu, clockTime=%llu\n", hostTime.count(), clockTime.count());
+          Print("  Sample-accurate beats=%f, clock beats=%f\n", *output, clockBeats);
+        }
+      }
+      catch (...) {
+        Print("Link: Sample-accurate timing failed, switching to clock timing\n");
+        unit->mUseHostTimeFilter = false;
+        // Fall through to clock timing
+      }
+    }
+
+    if (gForceClockTiming || !unit->mUseHostTimeFilter || !unit->mHostTimeFilterInitialized) {
+      // Fallback approach: Use clock time with latency compensation
+      // This may have more jitter but is more compatible across platforms
+      const auto time = gLink->clock().micros() + gLatency;
+      auto timeline = gLink->captureAudioSessionState();
+      const auto beats = timeline.beatAtTime(time, 4);
+      *output = static_cast<float>(beats);
+      unit->mLastBeat = *output;
+
+      // Debug output for clock timing method
+      static int clockDebugCounter = 0;
+      if (++clockDebugCounter % 1000 == 0) {
+        Print("Link Clock Debug: time=%llu, latency=%lld, beats=%f\n",
+              time.count(), gLatency.count(), *output);
+      }
+    }
   }
   else
   {
@@ -185,6 +242,8 @@ extern "C"
   void LinkTempoGen_next(LinkTempoGen *unit, int inNumSamples);
 }
 
+
+
 void LinkTempoGen_Ctor(LinkTempoGen *unit)
 {
 
@@ -215,6 +274,8 @@ void LinkTempoGen_next(LinkTempoGen *unit, int inNumSamples)
     *output = 120.0;
   }
 }
+
+
 
 // ========================================================================================================
 //
@@ -293,4 +354,5 @@ PluginLoad(Link)
   DefineSimpleUnit(Link);
   DefineSimpleUnit(LinkTempo);
   DefineSimpleUnit(LinkTempoGen);
+
 }
