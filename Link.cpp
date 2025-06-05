@@ -110,13 +110,21 @@ void Link_next(Link *unit, int inNumSamples)
 
   if (gLink)
   {
-        // use the sample time from supercollider and convert to host time
-        uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
-        const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
-        auto timeline = gLink->captureAudioSessionState();
-        const auto beats = timeline.beatAtTime(hostTime, 4);
-        *output = static_cast<float>(beats);
-        unit->mLastBeat = *output;
+#ifdef USE_HOST_TIME_FILTER
+    // use the sample time from supercollider and convert to host time
+    uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
+    const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
+    auto timeline = gLink->captureAudioSessionState();
+    const auto beats = timeline.beatAtTime(hostTime, 4);
+    *output = static_cast<float>(beats);
+    unit->mLastBeat = *output;
+#else
+    const auto time = gLink->clock().micros() + gLatency;
+    auto timeline = gLink->captureAudioSessionState();
+    const auto beats = timeline.beatAtTime(time, 4);
+    *output = static_cast<float>(beats);
+    unit->mLastBeat = *output;
+#endif
   }
   else
   {
@@ -340,6 +348,25 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
   if (gLink)
   {
+
+
+      // #ifdef USE_HOST_TIME_FILTER
+      //     // use the sample time from supercollider and convert to host time
+      //     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
+      //     const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
+      //     auto timeline = gLink->captureAudioSessionState();
+      //     const auto beats = timeline.beatAtTime(hostTime, 4);
+      //     *output = static_cast<float>(beats);
+      //     unit->mLastBeat = *output;
+      // #else
+      //     const auto time = gLink->clock().micros() + gLatency;
+      //     auto timeline = gLink->captureAudioSessionState();
+      //     const auto beats = timeline.beatAtTime(time, 4);
+      //     *output = static_cast<float>(beats);
+      //     unit->mLastBeat = *output;
+      // #endif
+
+
 
 #ifdef USE_HOST_TIME_FILTER
       // Get current beat position and Link tempo
