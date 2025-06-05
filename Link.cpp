@@ -120,6 +120,8 @@ void Link_next(Link *unit, int inNumSamples)
     unit->mLastBeat = *output;
 #else
     // const auto time = unit->mWorld->mHostTime;
+    // or
+    // double currentHostTime = ((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset) / unit->mWorld->mSampleRate;
     const auto time = gLink->clock().micros() + gLatency;
     auto timeline = gLink->captureAudioSessionState();
     const auto beats = timeline.beatAtTime(time, 4);
