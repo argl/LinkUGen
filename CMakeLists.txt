@@ -13,6 +13,7 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++17 -DSUPERNOVA")
 target_compile_features(Link PRIVATE cxx_std_17)
 
 if(APPLE)
+    set(MAC_AUDIO "1")
 	if(${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
 		set(DETECTED_OS "Mac OS X")
 		set_target_properties(Link PROPERTIES SUFFIX ".scx")

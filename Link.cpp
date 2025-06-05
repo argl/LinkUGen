@@ -119,10 +119,21 @@ void Link_next(Link *unit, int inNumSamples)
     *output = static_cast<float>(beats);
     unit->mLastBeat = *output;
 #else
-    // const auto time = unit->mWorld->mHostTime;
-    // or
-    // double currentHostTime = ((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset) / unit->mWorld->mSampleRate;
-    const auto time = gLink->clock().micros() + gLatency;
+    // Calculate sample-accurate host time using current clock time as reference
+    // auto currentClockTime = gLink->clock().micros();
+
+    // Convert sample offset to time offset in microseconds
+    const double sampleRate = unit->mWorld->mSampleRate;
+    const auto sampleOffset = static_cast<double>((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset);
+    const auto timeOffsetMicros = static_cast<long long>(std::round((sampleOffset / sampleRate) * 1000000.0));
+
+    // world->mBufCounter = 0;
+    // world->mBufLength = inOptions->mBufLength;
+    // world->mSampleOffset = 0;
+
+    // Use clock time with sample-accurate offset
+    const auto time = std::chrono::microseconds(timeOffsetMicros);
+
     auto timeline = gLink->captureAudioSessionState();
     const auto beats = timeline.beatAtTime(time, 4);
     *output = static_cast<float>(beats);
@@ -268,7 +279,9 @@ struct LinkGrid : public Unit
   // Link beat tracking (like basic Link ugen)
   double mLastLinkBeat;
 
-  ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
+  // ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
+  ableton::link::platform::Clock mClock;
+  ableton::link::BasicHostTimeFilter<ableton::link::platform::Clock, double, 512> mHostTimeFilter;
 };
 
 extern "C"
@@ -322,6 +335,9 @@ void LinkGrid_Ctor(LinkGrid *unit)
   // Initialize Link beat tracking
   unit->mLastLinkBeat = 0.0;
 
+  // Initialize Clock explicitly - construct in place
+  unit->mClock = ableton::link::platform::Clock();
+
   Print("LinkGrid setup: %.3f %.3f\n", unit->mGridSize, unit->mBeats);
 
   SETCALC(LinkGrid_next);
@@ -352,38 +368,27 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
   if (gLink)
   {
 
-
-      // #ifdef USE_HOST_TIME_FILTER
-      //     // use the sample time from supercollider and convert to host time
-      //     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
-      //     const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
-      //     auto timeline = gLink->captureAudioSessionState();
-      //     const auto beats = timeline.beatAtTime(hostTime, 4);
-      //     *output = static_cast<float>(beats);
-      //     unit->mLastBeat = *output;
-      // #else
-      //     const auto time = gLink->clock().micros() + gLatency;
-      //     auto timeline = gLink->captureAudioSessionState();
-      //     const auto beats = timeline.beatAtTime(time, 4);
-      //     *output = static_cast<float>(beats);
-      //     unit->mLastBeat = *output;
-      // #endif
-
-
-
-#ifdef USE_HOST_TIME_FILTER
-      // Get current beat position and Link tempo
-    uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
-    const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
-    auto timeline = gLink->captureAudioSessionState();
-    const double currentBeat = timeline.beatAtTime(hostTime, 4);
-    const double currentTempo = timeline.tempo(); // Get current Link tempo like LinkTempoGen
-#else
-    // const auto time = unit->mWorld->mHostTime;
-    const auto time = gLink->clock().micros();
+      // do not use host time filter on mac, but get the time by counting samples
+#ifdef LINK_PLATFORM_MACOSX
+    const auto clock = unit->mClock.micros();
+    const double sampleRate = unit->mWorld->mSampleRate;
+    const auto sampleOffset = static_cast<double>((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset);
+    const auto timeOffsetMicros = static_cast<long long>((sampleOffset / sampleRate) * 1000000.0);
+    const auto time = std::chrono::microseconds(timeOffsetMicros);
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
-    const double currentTempo = timeline.tempo(); // Get current Link tempo like LinkTempoGen
+    const double currentTempo = timeline.tempo();
+    static int debugCounter = 0;
+    if (++debugCounter >= 500) {
+      Print("Debug: clock=%llu, time=%llu\n ttm=%.6f", clock, time.count(), unit->mClock.mTicksToMicros);
+      debugCounter = 0;
+    }
+#else
+    uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
+    const auto time = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
+    auto timeline = gLink->captureAudioSessionState();
+    const double currentBeat = timeline.beatAtTime(time, 4);
+    const double currentTempo = timeline.tempo();
 #endif
     // Update Link beat output (replicate basic Link ugen functionality)
     unit->mLastLinkBeat = currentBeat;
@@ -427,6 +432,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
           unit->mBeatCounter = 0;
           unit->mSignalStartBeat = currentBeat;  // Record signal start beat
           unit->mSignalTrigger = true;
+          unit->mBeatTrigger = true;
           Print("LinkGrid: WAITING_TO_START -> RUNNING at beat %f\n", currentBeat);
         }
         break;
