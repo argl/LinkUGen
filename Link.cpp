@@ -119,6 +119,7 @@ void Link_next(Link *unit, int inNumSamples)
     *output = static_cast<float>(beats);
     unit->mLastBeat = *output;
 #else
+    // const auto time = unit->mWorld->mHostTime;
     const auto time = gLink->clock().micros() + gLatency;
     auto timeline = gLink->captureAudioSessionState();
     const auto beats = timeline.beatAtTime(time, 4);
@@ -375,9 +376,8 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(hostTime, 4);
     const double currentTempo = timeline.tempo(); // Get current Link tempo like LinkTempoGen
-
-    Print("currentBeat %.3f %.3f\n", currentBeat, currentTempo);
 #else
+    // const auto time = unit->mWorld->mHostTime;
     const auto time = gLink->clock().micros();
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
