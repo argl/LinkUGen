@@ -389,6 +389,8 @@ struct LinkGrid : public Unit
   double mEnabledEnv;
   double mSignalEnv;
 
+  double mPhase;
+
   // Timing
   double mSignalStartBeat;
 
@@ -433,6 +435,8 @@ void LinkGrid_Ctor(LinkGrid *unit)
   unit->mLastBeat = 0.0;
   unit->mGridCounter = 0;
 
+  unit->mPhase = 0.0;
+
   // Initialize beat tracking
   unit->mBeatStartBeat = 0.0;   // track in Link beats
   unit->mBeatCounter = 0;
@@ -471,11 +475,12 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
   float *beatTrigOut = OUT(1);
   float *enabledEnvOut = OUT(2);
   float *signalTrigOut = OUT(3);
-  float *signalEnvOut = OUT(4);
-  float *doneOut = OUT(5);
-  float *stateOut = OUT(6);
-  float *sigEnvLengthOut = OUT(7);  // Signal envelope length using tempo formula
-  float *linkBeatOut = OUT(8);      // Current Link beat
+  float *phaseOut = OUT(4);
+  float *signalEnvOut = OUT(5);
+  float *doneOut = OUT(6);
+  float *stateOut = OUT(7);
+  float *sigEnvLengthOut = OUT(8);
+  float *linkBeatOut = OUT(9);
 
   // Inputs
   bool enabled = *IN(0) > 0.5f;
@@ -493,11 +498,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
     const double currentTempo = timeline.tempo();
-    // static int debugCounter = 0;
-    // if (++debugCounter >= 500) {
-    //     Print("Debug: sampleTime=%llu, time=%llu\n", sampleTime, time.count());
-    //     debugCounter = 0;
-    // }
+
 
     unit->mLastLinkBeat = currentBeat;
 
@@ -655,6 +656,9 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
       // Formula: (1/tempo) * 60 * beats = seconds
       // Uses Link tempo automatically
       sigEnvLength = (1.0 / currentTempo) * 60.0 * beatsElapsed;
+      unit->mPhase = fmod(beatsElapsed / unit->mBeatInterval, 1.0);
+    } else {
+      unit->mPhase = 0;
     }
 
     // Update state
@@ -666,6 +670,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     *beatTrigOut = unit->mBeatTrigger ? 1.0f : 0.0f;
     *enabledEnvOut = static_cast<float>(unit->mEnabledEnv);
     *signalTrigOut = unit->mSignalTrigger ? 1.0f : 0.0f;
+    *phaseOut = static_cast<float>(unit->mPhase);
     *signalEnvOut = static_cast<float>(unit->mSignalEnv);
     *doneOut = unit->mDoneTrigger ? 1.0f : 0.0f;
     *stateOut = static_cast<float>(unit->mState);
@@ -679,6 +684,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     *beatTrigOut = 0.0f;
     *enabledEnvOut = 0.0f;
     *signalTrigOut = 0.0f;
+    *phaseOut = 0.0f;
     *signalEnvOut = 0.0f;
     *doneOut = 0.0f;
     *stateOut = 0.0f;

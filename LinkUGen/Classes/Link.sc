@@ -93,7 +93,7 @@ LinkGrid : MultiOutUGen {
 
 	init { arg ... theInputs;
 		inputs = theInputs;
-		^this.initOutputs(9, 'control');
+		^this.initOutputs(10, 'control');
 	}
 }
 
@@ -106,11 +106,12 @@ LinkGridSequencer {
 			beatTrig: grid[1],
 			enabledEnv: grid[2],
 			signalTrig: grid[3],
-			signalEnv: grid[4],
-			done: grid[5],
-			state: grid[6],
-			sigEnvLength: grid[7],
-			beat: grid[8]
+            phase: grid[4]
+			signalEnv: grid[5],
+			done: grid[6],
+			state: grid[7],
+			sigEnvLength: grid[8],
+			beat: grid[9]
 		);
 	}
 }
