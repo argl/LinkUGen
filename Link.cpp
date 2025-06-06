@@ -213,35 +213,48 @@ void Link_next(Link *unit, int inNumSamples)
 
   if (gLink)
   {
-#ifdef USE_HOST_TIME_FILTER
-    // use the sample time from supercollider and convert to host time
     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
-    const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
+    const auto time = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime) + gLatency;
     auto timeline = gLink->captureAudioSessionState();
-    const auto beats = timeline.beatAtTime(hostTime, 4);
-    *output = static_cast<float>(beats);
+    const double currentBeat = timeline.beatAtTime(time, 4);
+    *output = static_cast<float>(currentBeat);
     unit->mLastBeat = *output;
-#else
-    // Calculate sample-accurate host time using current clock time as reference
-    // auto currentClockTime = gLink->clock().micros();
+    // static int debugCounter = 0;
+    // if (++debugCounter >= 500) {
+    //     Print("Debug: sampleTime=%llu, time=%llu\n", sampleTime, time.count());
+    //     debugCounter = 0;
+    // }
 
-    // Convert sample offset to time offset in microseconds
-    const double sampleRate = unit->mWorld->mSampleRate;
-    const auto sampleOffset = static_cast<double>((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset);
-    const auto timeOffsetMicros = static_cast<long long>(std::round((sampleOffset / sampleRate) * 1000000.0));
 
-    // world->mBufCounter = 0;
-    // world->mBufLength = inOptions->mBufLength;
-    // world->mSampleOffset = 0;
+    // #ifdef USE_HOST_TIME_FILTER
+    //     // use the sample time from supercollider and convert to host time
+    //     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
+    //     const auto hostTime = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
+    //     auto timeline = gLink->captureAudioSessionState();
+    //     const auto beats = timeline.beatAtTime(hostTime, 4);
+    //     *output = static_cast<float>(beats);
+    //     unit->mLastBeat = *output;
+    // #else
+    //     // Calculate sample-accurate host time using current clock time as reference
+    //     // auto currentClockTime = gLink->clock().micros();
 
-    // Use clock time with sample-accurate offset
-    const auto time = std::chrono::microseconds(timeOffsetMicros);
+    //     // Convert sample offset to time offset in microseconds
+    //     const double sampleRate = unit->mWorld->mSampleRate;
+    //     const auto sampleOffset = static_cast<double>((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset);
+    //     const auto timeOffsetMicros = static_cast<long long>(std::round((sampleOffset / sampleRate) * 1000000.0));
 
-    auto timeline = gLink->captureAudioSessionState();
-    const auto beats = timeline.beatAtTime(time, 4);
-    *output = static_cast<float>(beats);
-    unit->mLastBeat = *output;
-#endif
+    //     // world->mBufCounter = 0;
+    //     // world->mBufLength = inOptions->mBufLength;
+    //     // world->mSampleOffset = 0;
+
+    //     // Use clock time with sample-accurate offset
+    //     const auto time = std::chrono::microseconds(timeOffsetMicros);
+
+    //     auto timeline = gLink->captureAudioSessionState();
+    //     const auto beats = timeline.beatAtTime(time, 4);
+    //     *output = static_cast<float>(beats);
+    //     unit->mLastBeat = *output;
+    // #endif
   }
   else
   {
@@ -475,34 +488,17 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
   if (gLink)
   {
-
-      // do not use host time filter on mac, but get the time by counting samples
-// #ifdef LINK_PLATFORM_MACOSX
-//     const double sampleRate = unit->mWorld->mSampleRate;
-//     const auto sampleOffset = static_cast<double>((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset);
-//     const auto timeOffsetMicros = static_cast<long long>((sampleOffset / sampleRate) * 1000000.0);
-//     const auto time = std::chrono::microseconds(timeOffsetMicros);
-//     auto timeline = gLink->captureAudioSessionState();
-//     const double currentBeat = timeline.beatAtTime(time, 4);
-//     const double currentTempo = timeline.tempo();
-//     static int debugCounter = 0;
-//     if (++debugCounter >= 500) {
-//       Print("Debug: clock=%llu, time=%llu\n", clock, time.count());
-//       debugCounter = 0;
-//     }
-// #else
     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
     const auto time = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime) + gLatency;
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
     const double currentTempo = timeline.tempo();
-    static int debugCounter = 0;
-    if (++debugCounter >= 500) {
-        Print("Debug: sampleTime=%llu, time=%llu\n", sampleTime, time.count());
-        debugCounter = 0;
-    }
-// #endif
-    // Update Link beat output (replicate basic Link ugen functionality)
+    // static int debugCounter = 0;
+    // if (++debugCounter >= 500) {
+    //     Print("Debug: sampleTime=%llu, time=%llu\n", sampleTime, time.count());
+    //     debugCounter = 0;
+    // }
+
     unit->mLastLinkBeat = currentBeat;
 
     // Detect grid trigger
