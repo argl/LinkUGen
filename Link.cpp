@@ -13,6 +13,109 @@ static ableton::Link *gLink = nullptr;
 static std::chrono::microseconds gLatency = std::chrono::microseconds(0);
 static float gTempo = 60.0;
 
+
+// ========================================================================================================
+//
+// Custom HostTimeFilter with explicit Clock initialization for macOS
+//
+// ========================================================================================================
+
+#ifdef LINK_PLATFORM_MACOSX
+template<typename Clock>
+class CustomHostTimeFilter
+{
+  using NumberType = std::uint64_t;
+  using Points = std::vector<std::pair<NumberType, std::int64_t>>;
+  using PointIt = typename Points::iterator;
+
+  static const std::size_t kNumPoints = 512;
+
+public:
+  CustomHostTimeFilter()
+    : mIndex(0)
+    , mHostTimeSampler() // Explicit default construction
+  {
+    mPoints.reserve(kNumPoints);
+    // Force Clock initialization
+    mHostTimeSampler = Clock();
+    // Verify initialization by calling micros() once
+    auto testMicros = mHostTimeSampler.micros();
+    Print("CustomHostTimeFilter: Clock initialized, test micros = %llu\n", testMicros.count());
+  }
+
+  ~CustomHostTimeFilter() = default;
+
+  void reset()
+  {
+    mIndex = 0;
+    mPoints.clear();
+  }
+
+  std::chrono::microseconds sampleTimeToHostTime(const NumberType sampleTime)
+  {
+    const auto micros = static_cast<std::int64_t>(mHostTimeSampler.micros().count());
+    const auto point = std::make_pair(sampleTime, micros);
+
+    if (mPoints.size() < kNumPoints)
+    {
+      mPoints.push_back(point);
+    }
+    else
+    {
+      mPoints[mIndex] = point;
+    }
+    mIndex = (mIndex + 1) % kNumPoints;
+
+    const auto result = linearRegression(mPoints.begin(), mPoints.end());
+    const auto hostTime = (result.first * sampleTime) + result.second;
+
+    return std::chrono::microseconds(llround(hostTime));
+  }
+
+private:
+  // Simple linear regression implementation
+  std::pair<double, double> linearRegression(PointIt begin, PointIt end)
+  {
+    const auto numPoints = static_cast<double>(std::distance(begin, end));
+    if (numPoints < 2)
+    {
+      return std::make_pair(1.0, 0.0); // Default slope=1, intercept=0
+    }
+
+    double sumX = 0.0, sumY = 0.0, sumXY = 0.0, sumXX = 0.0;
+
+    for (auto it = begin; it != end; ++it)
+    {
+      const double x = static_cast<double>(it->first);
+      const double y = static_cast<double>(it->second);
+      sumX += x;
+      sumY += y;
+      sumXY += x * y;
+      sumXX += x * x;
+    }
+
+    const double meanX = sumX / numPoints;
+    const double meanY = sumY / numPoints;
+
+    const double denominator = sumXX - numPoints * meanX * meanX;
+    if (std::abs(denominator) < 1e-10)
+    {
+      return std::make_pair(1.0, meanY - meanX); // Fallback
+    }
+
+    const double slope = (sumXY - numPoints * meanX * meanY) / denominator;
+    const double intercept = meanY - slope * meanX;
+
+    return std::make_pair(slope, intercept);
+  }
+
+  std::size_t mIndex;
+  Points mPoints;
+  Clock mHostTimeSampler;
+};
+#endif
+
+
 // ========================================================================================================
 //
 // Link Interface for SuperCollider
@@ -279,9 +382,11 @@ struct LinkGrid : public Unit
   // Link beat tracking (like basic Link ugen)
   double mLastLinkBeat;
 
-  // ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
-  ableton::link::platform::Clock mClock;
-  ableton::link::BasicHostTimeFilter<ableton::link::platform::Clock, double, 512> mHostTimeFilter;
+  #ifdef LINK_PLATFORM_MACOSX
+    CustomHostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
+  #else
+    ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
+  #endif
 };
 
 extern "C"
@@ -336,7 +441,10 @@ void LinkGrid_Ctor(LinkGrid *unit)
   unit->mLastLinkBeat = 0.0;
 
   // Initialize Clock explicitly - construct in place
-  unit->mClock = ableton::link::platform::Clock();
+  // unit->mClock = ableton::link::platform::Clock();
+#ifdef LINK_PLATFORM_MACOSX
+  unit->mHostTimeFilter = CustomHostTimeFilter<ableton::link::platform::Clock>();
+#endif
 
   Print("LinkGrid setup: %.3f %.3f\n", unit->mGridSize, unit->mBeats);
 
@@ -369,27 +477,31 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
   {
 
       // do not use host time filter on mac, but get the time by counting samples
-#ifdef LINK_PLATFORM_MACOSX
-    const auto clock = unit->mClock.micros();
-    const double sampleRate = unit->mWorld->mSampleRate;
-    const auto sampleOffset = static_cast<double>((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset);
-    const auto timeOffsetMicros = static_cast<long long>((sampleOffset / sampleRate) * 1000000.0);
-    const auto time = std::chrono::microseconds(timeOffsetMicros);
+// #ifdef LINK_PLATFORM_MACOSX
+//     const double sampleRate = unit->mWorld->mSampleRate;
+//     const auto sampleOffset = static_cast<double>((unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset);
+//     const auto timeOffsetMicros = static_cast<long long>((sampleOffset / sampleRate) * 1000000.0);
+//     const auto time = std::chrono::microseconds(timeOffsetMicros);
+//     auto timeline = gLink->captureAudioSessionState();
+//     const double currentBeat = timeline.beatAtTime(time, 4);
+//     const double currentTempo = timeline.tempo();
+//     static int debugCounter = 0;
+//     if (++debugCounter >= 500) {
+//       Print("Debug: clock=%llu, time=%llu\n", clock, time.count());
+//       debugCounter = 0;
+//     }
+// #else
+    uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
+    const auto time = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime) + gLatency;
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
     const double currentTempo = timeline.tempo();
     static int debugCounter = 0;
     if (++debugCounter >= 500) {
-      Print("Debug: clock=%llu, time=%llu\n ttm=%.6f", clock, time.count(), unit->mClock.mTicksToMicros);
-      debugCounter = 0;
+        Print("Debug: sampleTime=%llu, time=%llu\n", sampleTime, time.count());
+        debugCounter = 0;
     }
-#else
-    uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
-    const auto time = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime);
-    auto timeline = gLink->captureAudioSessionState();
-    const double currentBeat = timeline.beatAtTime(time, 4);
-    const double currentTempo = timeline.tempo();
-#endif
+// #endif
     // Update Link beat output (replicate basic Link ugen functionality)
     unit->mLastLinkBeat = currentBeat;
 
