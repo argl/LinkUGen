@@ -378,6 +378,7 @@ struct LinkGrid : public Unit
   double mBeatStartBeat;  // track in Link beats
   int mBeatCounter;
   double mBeatInterval;   // Beat interval in Link beats
+  double mLastBeatPosition; // For boundary detection
 
   // Trigger states
   bool mGridTrigger;
@@ -440,6 +441,7 @@ void LinkGrid_Ctor(LinkGrid *unit)
   // Initialize beat tracking
   unit->mBeatStartBeat = 0.0;   // track in Link beats
   unit->mBeatCounter = 0;
+  unit->mLastBeatPosition = 0.0;
 
   // Initialize triggers
   unit->mGridTrigger = false;
@@ -484,6 +486,12 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
   // Inputs
   bool enabled = *IN(0) > 0.5f;
+  unit->mGridSize = *IN(1);     // Grid size in beats
+  // unit->mBeats = *IN(2);        // beats in beat units
+  // unit->mBeatInterval = unit->mBeats;
+
+
+
 
   // Reset triggers at start of each sample
   unit->mGridTrigger = false;
@@ -498,6 +506,19 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
     const double currentTempo = timeline.tempo();
+
+    double newBeatInterval = *IN(2); // beats parameter
+    bool intervalChanged = (fabs(newBeatInterval - unit->mBeats) > 1e-6);
+    if (intervalChanged) {
+      unit->mBeats = newBeatInterval;
+      unit->mBeatInterval = unit->mBeats;
+
+      // Reset beat position tracking for new interval
+      if (unit->mState == RUNNING || unit->mState == STOPPING) {
+          unit->mLastBeatPosition = fmod(currentBeat, unit->mBeatInterval);
+          Print("Beat interval changed to %.2f, reset position tracking\n", unit->mBeatInterval);
+      }
+    }
 
 
     unit->mLastLinkBeat = currentBeat;
@@ -539,6 +560,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
           unit->mState = RUNNING;
           unit->mBeatStartBeat = currentBeat;  // track in Link beats
           unit->mBeatCounter = 0;
+          unit->mLastBeatPosition = fmod(currentBeat, unit->mBeatInterval);
           unit->mSignalStartBeat = currentBeat;  // Record signal start beat
           unit->mSignalTrigger = true;
           unit->mBeatTrigger = true;
@@ -590,20 +612,18 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
             unit->mGridTrigger = true;
           }
 
-          // Generate independent beat triggers using Link beats
-          double beatsElapsed = currentBeat - unit->mBeatStartBeat;
-          if (beatsElapsed < 0) {
-            // Handle beat wraparound
-            beatsElapsed = 0;
-          }
-
-          // Calculate how many beat intervals have passed
-          int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
-
-          if (expectedBeatCount > unit->mBeatCounter) {
+          // Generate beat triggers using boundary detection
+          double beatPosition = fmod(currentBeat, unit->mBeatInterval);
+      
+          // Detect beat boundary crossing
+          if (beatPosition < unit->mLastBeatPosition || 
+              (unit->mLastBeatPosition < 0.01 && beatPosition > unit->mBeatInterval - 0.01))
+          {
             unit->mBeatTrigger = true;
-            unit->mBeatCounter = expectedBeatCount;
+            unit->mBeatCounter++;
           }
+      
+          unit->mLastBeatPosition = beatPosition;
         }
         break;
 
@@ -614,18 +634,18 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
             unit->mGridTrigger = true;
           }
 
-          // Continue beat triggers
-          double beatsElapsed = currentBeat - unit->mBeatStartBeat;
-          if (beatsElapsed < 0) {
-            beatsElapsed = 0;
-          }
-
-          int expectedBeatCount = static_cast<int>(beatsElapsed / unit->mBeatInterval);
-
-          if (expectedBeatCount > unit->mBeatCounter) {
+          // Generate beat triggers using boundary detection
+          double beatPosition = fmod(currentBeat, unit->mBeatInterval);
+      
+          // Detect beat boundary crossing
+          if (beatPosition < unit->mLastBeatPosition || 
+              (unit->mLastBeatPosition < 0.01 && beatPosition > unit->mBeatInterval - 0.01))
+          {
             unit->mBeatTrigger = true;
-            unit->mBeatCounter = expectedBeatCount;
+            unit->mBeatCounter++;
           }
+      
+          unit->mLastBeatPosition = beatPosition;
         }
         break;
     }

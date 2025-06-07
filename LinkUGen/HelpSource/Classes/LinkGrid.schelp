@@ -11,72 +11,82 @@ The UGen operates in four distinct states:
 list::
 ## IDLE (0) - Not enabled, not running
 ## WAITING_TO_START (1) - Enabled, waiting for grid trigger to start
-## RUNNING (2) - Currently running and producing output  
+## RUNNING (2) - Currently running and producing output
 ## STOPPING (3) - Disabled, waiting for grid trigger to stop cleanly
 ::
 
 CLASSMETHODS::
 
 METHOD:: kr
-
 Create a new LinkGrid UGen at control rate.
 
-ARGUMENTS::
+ARGUMENT:: enabled
+Enable/disable signal (0 or 1). When enabled, the UGen waits for the next grid boundary to start. When disabled while running, it waits for the next grid boundary to stop cleanly.
 
-enabled - Enable/disable signal (0 or 1). When enabled, the UGen waits for the next grid boundary to start. When disabled while running, it waits for the next grid boundary to stop cleanly.
+ARGUMENT:: gridSize
+Grid size in beats. Examples: 0.25 for 16th notes, 0.5 for 8th notes, 1.0 for quarter notes, 4.0 for whole notes.
 
-gridSize - Grid size in beats. Examples: 0.25 for 16th notes, 0.5 for 8th notes, 1.0 for quarter notes, 4.0 for whole notes.
+ARGUMENT:: beats
+Beat trigger interval in beats. This determines how often the independent beat trigger fires. Examples: 1.0 for quarter note intervals, 0.5 for 8th note intervals, 16.0 for every 16 beats.
 
-beats - Beat trigger interval in beats. This determines how often the independent beat trigger fires. Examples: 1.0 for quarter note intervals, 0.5 for 8th note intervals, 16.0 for every 16 beats.
+returns::
+A LinkGrid UGen with STRONG::10 outputs:::
 
-returns:: A LinkGrid UGen with 9 outputs
+STRONG::0 – grid::
 
-INSTANCEMETHODS::
-
-METHOD:: gridTrig
 Grid boundary triggers. Fires on grid boundaries while running or stopping.
-returns:: Control rate signal (0 or 1)
+Control rate signal (0 or 1)
 
-METHOD:: beatTrig  
+STRONG::1 – beatTrig::
+
 Independent beat triggers. Fires at intervals specified by the beats parameter, running at its own timing once started.
-returns:: Control rate signal (0 or 1)
+Control rate signal (0 or 1)
 
-METHOD:: enabledEnv
+STRONG::2 – enabledEnv::
+
 Enabled state envelope. 1 when running or stopping, 0 when idle or waiting.
-returns:: Control rate signal (0 or 1)
+Control rate signal (0 or 1). EMPHASIS::deprecated, use signalEnv::
 
-METHOD:: signalTrig
+STRONG::3 – signalTrig::
+
 Signal start trigger. Fires once when transitioning from waiting to running.
-returns:: Control rate signal (0 or 1)
+Control rate signal (0 or 1)
 
-METHOD:: signalEnv  
+STRONG::4 – phase::
+
+When running, goes from 0..1 over a beat phase, i.e. over the part's length
+Control rate signal (0..1)
+
+STRONG::5 – signalEnv::
+
 Signal envelope. 1 when running, 0 when idle, waiting, or after stopping on grid boundary.
-returns:: Control rate signal (0 or 1)
+Control rate signal (0 or 1)
 
-METHOD:: done
+STRONG::6 – done::
+
 Done trigger. Fires once when stopping cleanly on a grid boundary.
-returns:: Control rate signal (0 or 1)
+Control rate signal (0 or 1)
 
-METHOD:: state
+STRONG::7 – state::
+
 Current state number: 0=IDLE, 1=WAITING_TO_START, 2=RUNNING, 3=STOPPING
-returns:: Control rate signal (0-3)
+Control rate signal (0-3)
 
-METHOD:: sigEnvLength
+STRONG::8 – sigEnvLength::
+
 Signal envelope length in seconds, calculated using the formula: (1/tempo) * 60 * beats
-returns:: Control rate signal (seconds)
+Control rate signal (seconds)
 
-METHOD:: beat
+STRONG::9 – beat::
+
 Current Link beat position (replicates basic Link UGen functionality)
-returns:: Control rate signal (beat position)
-
-METHOD:: isIdle, isWaiting, isRunning, isStopping
-Convenience methods for state checking
-returns:: Boolean comparison with current state
+Control rate signal (beat position)
 
 EXAMPLES::
 
 code::
 // Basic usage - 16th note grid, quarter note beats
+Link.enable();
 (
 {
     var grid = LinkGrid.kr(
@@ -84,8 +94,8 @@ code::
         gridSize: 0.25,                // 16th note grid
         beats: 1.0                     // Quarter note beat intervals
     );
-    
-    var sound = SinOsc.ar([220, 330]) * Env.perc.kr(gate: grid.beatTrig) * 0.3;
+
+    var sound = SinOsc.ar([220, 330]) * Env.perc.kr(gate: grid[1]) * 0.3;
     sound * grid.signalEnv * grid.enabledEnv;
 }.play;
 )
@@ -98,73 +108,19 @@ code::
         gridSize: 1.0,                     // Quarter note grid
         beats: 4.0                         // Beat every 4 quarters (whole note)
     );
-    
-    var sound = SinOsc.ar(440) * Env.perc.kr(gate: grid.beatTrig) * 0.2;
-    
+
+    var sound = SinOsc.ar(440) * Env.perc.kr(gate: grid[1]) * 0.2;
+
     // Pause synth when done
     Pause.kr(grid.done, 1);
-    
+
     sound * grid.signalEnv;
-}.play;
-)
-
-// State monitoring
-(
-{
-    var grid = LinkGrid.kr(
-        enabled: MouseButton.kr(0, 1),
-        gridSize: 4.0,                     // Whole note grid
-        beats: 16.0                        // Beat every 16 quarters
-    );
-    
-    // Monitor state changes
-    grid.state.poll(1, "State");
-    grid.sigEnvLength.poll(5, "Signal Length (sec)");
-    
-    // Different sounds for different states
-    var sounds = [
-        Silent.ar,                                              // IDLE
-        PinkNoise.ar(0.05),                                    // WAITING
-        SinOsc.ar(440) * Env.perc.kr(gate: grid.beatTrig),    // RUNNING
-        WhiteNoise.ar(0.02)                                    // STOPPING
-    ];
-    
-    var sound = Select.ar(grid.state, sounds);
-    sound * grid.signalEnv * 0.3;
-}.play;
-)
-
-// Pattern integration
-(
-Pdef(\gridPattern, Pbind(
-    \instrument, \default,
-    \dur, 0.25,
-    \freq, Prand([220, 330, 440, 550], inf),
-    \amp, 0.3,
-    \gate, Pfunc({
-        var grid = LinkGrid.kr(1, 0.25, 1.0);
-        grid.beatTrig; // Use beat trigger for timing
-    })
-)).play;
-)
-
-// Chaining multiple LinkGrid instances
-(
-{
-    var trigger = Impulse.kr(0.2);
-    var grid1 = LinkGrid.kr(trigger, 1.0, 4.0);
-    var grid2 = LinkGrid.kr(grid1.done, 0.5, 2.0); // Start when grid1 is done
-    
-    var sound1 = SinOsc.ar(220) * Env.perc.kr(gate: grid1.beatTrig) * grid1.signalEnv * 0.2;
-    var sound2 = SinOsc.ar(440) * Env.perc.kr(gate: grid2.beatTrig) * grid2.signalEnv * 0.2;
-    
-    sound1 + sound2;
 }.play;
 )
 ::
 
-Note:: LinkGrid requires Ableton Link to be enabled first using Link.enable().
+LinkGrid requires Ableton Link to be enabled first using Link.enable().
 
-Note:: The tempo for signal length calculation is automatically fetched from the Link timeline, similar to LinkTempoGen.
+The tempo for signal length calculation is automatically fetched from the Link timeline, similar to LinkTempoGen.
 
-Note:: Grid and beat timings are always synchronized to the Link beat grid, ensuring musical accuracy across all connected applications.
+Grid and beat timings are always synchronized to the Link beat grid, ensuring musical accuracy across all connected applications.
