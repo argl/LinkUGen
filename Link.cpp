@@ -515,7 +515,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
       // Reset beat position tracking for new interval
       if (unit->mState == RUNNING || unit->mState == STOPPING) {
-          unit->mLastBeatPosition = fmod(currentBeat, unit->mBeatInterval);
+          unit->mLastBeatPosition = 0.0;
           Print("Beat interval changed to %.2f, reset position tracking\n", unit->mBeatInterval);
       }
     }
@@ -560,7 +560,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
           unit->mState = RUNNING;
           unit->mBeatStartBeat = currentBeat;  // track in Link beats
           unit->mBeatCounter = 0;
-          unit->mLastBeatPosition = fmod(currentBeat, unit->mBeatInterval);
+          unit->mLastBeatPosition = 0.0;
           unit->mSignalStartBeat = currentBeat;  // Record signal start beat
           unit->mSignalTrigger = true;
           unit->mBeatTrigger = true;
@@ -612,8 +612,8 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
             unit->mGridTrigger = true;
           }
 
-          // Generate beat triggers using boundary detection
-          double beatPosition = fmod(currentBeat, unit->mBeatInterval);
+          // Generate beat triggers using boundary detection relative to start beat
+          double beatPosition = fmod(currentBeat - unit->mBeatStartBeat, unit->mBeatInterval);
       
           // Detect beat boundary crossing
           if (beatPosition < unit->mLastBeatPosition || 
@@ -634,8 +634,8 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
             unit->mGridTrigger = true;
           }
 
-          // Generate beat triggers using boundary detection
-          double beatPosition = fmod(currentBeat, unit->mBeatInterval);
+          // Generate beat triggers using boundary detection relative to start beat
+          double beatPosition = fmod(currentBeat - unit->mBeatStartBeat, unit->mBeatInterval);
       
           // Detect beat boundary crossing
           if (beatPosition < unit->mLastBeatPosition || 
