@@ -657,8 +657,6 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
         unit->mEnabledEnv = 0.0;
         break;
       case WAITING_TO_START:
-        unit->mEnabledEnv = 0.0;
-        break;
       case RUNNING:
       case STOPPING:
         unit->mEnabledEnv = 1.0;

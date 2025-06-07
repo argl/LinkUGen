@@ -44,8 +44,8 @@ Control rate signal (0 or 1)
 
 STRONG::2 – enabledEnv::
 
-Enabled state envelope. 1 when running or stopping, 0 when idle or waiting.
-Control rate signal (0 or 1). EMPHASIS::deprecated, use signalEnv::
+Enabled state envelope. 1 when waiting, running or stopping, 0 when idle.
+Control rate signal (0 or 1).
 
 STRONG::3 – signalTrig::
 
