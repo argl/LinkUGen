@@ -614,15 +614,15 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
           // Generate beat triggers using boundary detection relative to start beat
           double beatPosition = fmod(currentBeat - unit->mBeatStartBeat, unit->mBeatInterval);
-      
+
           // Detect beat boundary crossing
-          if (beatPosition < unit->mLastBeatPosition || 
+          if (beatPosition < unit->mLastBeatPosition ||
               (unit->mLastBeatPosition < 0.01 && beatPosition > unit->mBeatInterval - 0.01))
           {
             unit->mBeatTrigger = true;
             unit->mBeatCounter++;
           }
-      
+
           unit->mLastBeatPosition = beatPosition;
         }
         break;
@@ -636,15 +636,15 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
           // Generate beat triggers using boundary detection relative to start beat
           double beatPosition = fmod(currentBeat - unit->mBeatStartBeat, unit->mBeatInterval);
-      
+
           // Detect beat boundary crossing
-          if (beatPosition < unit->mLastBeatPosition || 
+          if (beatPosition < unit->mLastBeatPosition ||
               (unit->mLastBeatPosition < 0.01 && beatPosition > unit->mBeatInterval - 0.01))
           {
             unit->mBeatTrigger = true;
             unit->mBeatCounter++;
           }
-      
+
           unit->mLastBeatPosition = beatPosition;
         }
         break;
@@ -668,14 +668,13 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
     // on btrig, so it must be the block size, not elapsed time. Sampling elapsed
     // time here would yield 0 at the first btrig (signal-start grid boundary),
     // collapsing the first block's envelope and producing a glitched first loop.
-    double sigEnvLength = 0.0;
+    double sigEnvLength = (60.0 / currentTempo) * unit->mBeatInterval;
     if (unit->mState == RUNNING || unit->mState == STOPPING) {
       double beatsElapsed = currentBeat - unit->mSignalStartBeat;
       if (beatsElapsed < 0) {
         // Handle beat wraparound (though this should be rare)
         beatsElapsed = 0;
       }
-      sigEnvLength = (60.0 / currentTempo) * unit->mBeatInterval;
       unit->mPhase = fmod(beatsElapsed / unit->mBeatInterval, 1.0);
     } else {
       unit->mPhase = 0;
