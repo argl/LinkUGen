@@ -663,7 +663,11 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
         break;
     }
 
-    // Calculate signal envelope length using tempo formula: (1/tempo) * 60 * beats
+    // sigEnvLength: duration of one beat block in seconds at the current tempo.
+    // Used by consumer synthdefs as the timeScale of per-block EnvGens triggered
+    // on btrig, so it must be the block size, not elapsed time. Sampling elapsed
+    // time here would yield 0 at the first btrig (signal-start grid boundary),
+    // collapsing the first block's envelope and producing a glitched first loop.
     double sigEnvLength = 0.0;
     if (unit->mState == RUNNING || unit->mState == STOPPING) {
       double beatsElapsed = currentBeat - unit->mSignalStartBeat;
@@ -671,9 +675,7 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
         // Handle beat wraparound (though this should be rare)
         beatsElapsed = 0;
       }
-      // Formula: (1/tempo) * 60 * beats = seconds
-      // Uses Link tempo automatically
-      sigEnvLength = (1.0 / currentTempo) * 60.0 * beatsElapsed;
+      sigEnvLength = (60.0 / currentTempo) * unit->mBeatInterval;
       unit->mPhase = fmod(beatsElapsed / unit->mBeatInterval, 1.0);
     } else {
       unit->mPhase = 0;
