@@ -16,103 +16,28 @@ static float gTempo = 60.0;
 
 // ========================================================================================================
 //
-// Custom HostTimeFilter with explicit Clock initialization for macOS
+// Host time source
 //
 // ========================================================================================================
-
-#ifdef LINK_PLATFORM_MACOSX
-template<typename Clock>
-class CustomHostTimeFilter
-{
-  using NumberType = std::uint64_t;
-  using Points = std::vector<std::pair<NumberType, std::int64_t>>;
-  using PointIt = typename Points::iterator;
-
-  static const std::size_t kNumPoints = 512;
-
-public:
-  CustomHostTimeFilter()
-    : mIndex(0)
-    , mHostTimeSampler() // Explicit default construction
-  {
-    mPoints.reserve(kNumPoints);
-    // Force Clock initialization
-    mHostTimeSampler = Clock();
-    // Verify initialization by calling micros() once
-    auto testMicros = mHostTimeSampler.micros();
-    Print("CustomHostTimeFilter: Clock initialized, test micros = %llu\n", testMicros.count());
-  }
-
-  ~CustomHostTimeFilter() = default;
-
-  void reset()
-  {
-    mIndex = 0;
-    mPoints.clear();
-  }
-
-  std::chrono::microseconds sampleTimeToHostTime(const NumberType sampleTime)
-  {
-    const auto micros = static_cast<std::int64_t>(mHostTimeSampler.micros().count());
-    const auto point = std::make_pair(sampleTime, micros);
-
-    if (mPoints.size() < kNumPoints)
-    {
-      mPoints.push_back(point);
-    }
-    else
-    {
-      mPoints[mIndex] = point;
-    }
-    mIndex = (mIndex + 1) % kNumPoints;
-
-    const auto result = linearRegression(mPoints.begin(), mPoints.end());
-    const auto hostTime = (result.first * sampleTime) + result.second;
-
-    return std::chrono::microseconds(llround(hostTime));
-  }
-
-private:
-  // Simple linear regression implementation
-  std::pair<double, double> linearRegression(PointIt begin, PointIt end)
-  {
-    const auto numPoints = static_cast<double>(std::distance(begin, end));
-    if (numPoints < 2)
-    {
-      return std::make_pair(1.0, 0.0); // Default slope=1, intercept=0
-    }
-
-    double sumX = 0.0, sumY = 0.0, sumXY = 0.0, sumXX = 0.0;
-
-    for (auto it = begin; it != end; ++it)
-    {
-      const double x = static_cast<double>(it->first);
-      const double y = static_cast<double>(it->second);
-      sumX += x;
-      sumY += y;
-      sumXY += x * y;
-      sumXX += x * x;
-    }
-
-    const double meanX = sumX / numPoints;
-    const double meanY = sumY / numPoints;
-
-    const double denominator = sumXX - numPoints * meanX * meanX;
-    if (std::abs(denominator) < 1e-10)
-    {
-      return std::make_pair(1.0, meanY - meanX); // Fallback
-    }
-
-    const double slope = (sumXY - numPoints * meanX * meanY) / denominator;
-    const double intercept = meanY - slope * meanX;
-
-    return std::make_pair(slope, intercept);
-  }
-
-  std::size_t mIndex;
-  Points mPoints;
-  Clock mHostTimeSampler;
-};
+//
+// SuperCollider allocates Unit structs as raw memory and never runs C++ constructors on
+// them — the `*_Ctor` functions are plain init callbacks, not real constructors. So any
+// non-trivial member of a Unit (like HostTimeFilter, which owns a std::vector) starts life
+// as uninitialised memory. On Linux that memory happens to come back zeroed, which is a
+// valid empty vector, and the filter's linear regression works. On macOS it is garbage:
+// `sampleTimeToHostTime` returns a nonsense host time, so `Link.kr` reports a constant,
+// wildly negative beat.
+//
+// That constant beat is why the whole Link layer looked dead on macOS: LinkTrig is
+// `Changed.kr(LinkCount...)`, and a beat that never changes produces *no triggers at all* —
+// the sequencer's `/step` replies never fire, and LinkGrid never advances.
+//
+// On macOS, therefore, skip the filter entirely and take the host time straight from Link's
+// own clock. The cost is the sub-block sample offset: timing accuracy drops from
+// sample-accurate to block-rate (~1.3 ms at 64 samples), which is irrelevant for the kr-rate
+// beat/count/trigger UGens built on top of this.
+#if defined(LINK_PLATFORM_MACOSX)
+  #define LINKUGEN_NO_HOST_TIME_FILTER 1
 #endif
 
 
@@ -185,7 +110,9 @@ void LinkDisabler_next(LinkDisabler *unit, int inNumSamples)
 struct Link : public Unit
 {
   float mLastBeat;
+#ifndef LINKUGEN_NO_HOST_TIME_FILTER
   ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
+#endif
 };
 
 extern "C"
@@ -213,17 +140,16 @@ void Link_next(Link *unit, int inNumSamples)
 
   if (gLink)
   {
+#ifdef LINKUGEN_NO_HOST_TIME_FILTER
+    const auto time = gLink->clock().micros() + gLatency;
+#else
     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
     const auto time = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime) + gLatency;
+#endif
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
     *output = static_cast<float>(currentBeat);
     unit->mLastBeat = *output;
-    // static int debugCounter = 0;
-    // if (++debugCounter >= 500) {
-    //     Print("Debug: sampleTime=%llu, time=%llu\n", sampleTime, time.count());
-    //     debugCounter = 0;
-    // }
 
 
     // #ifdef USE_HOST_TIME_FILTER
@@ -398,11 +324,9 @@ struct LinkGrid : public Unit
   // Link beat tracking (like basic Link ugen)
   double mLastLinkBeat;
 
-  #ifdef LINK_PLATFORM_MACOSX
-    CustomHostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
-  #else
-    ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
-  #endif
+#ifndef LINKUGEN_NO_HOST_TIME_FILTER
+  ableton::link::HostTimeFilter<ableton::link::platform::Clock> mHostTimeFilter;
+#endif
 };
 
 extern "C"
@@ -459,12 +383,6 @@ void LinkGrid_Ctor(LinkGrid *unit)
   // Initialize Link beat tracking
   unit->mLastLinkBeat = 0.0;
 
-  // Initialize Clock explicitly - construct in place
-  // unit->mClock = ableton::link::platform::Clock();
-#ifdef LINK_PLATFORM_MACOSX
-  unit->mHostTimeFilter = CustomHostTimeFilter<ableton::link::platform::Clock>();
-#endif
-
   Print("LinkGrid setup: %.3f %.3f\n", unit->mGridSize, unit->mBeats);
 
   SETCALC(LinkGrid_next);
@@ -501,8 +419,12 @@ void LinkGrid_next(LinkGrid *unit, int inNumSamples)
 
   if (gLink)
   {
+#ifdef LINKUGEN_NO_HOST_TIME_FILTER
+    const auto time = gLink->clock().micros() + gLatency;
+#else
     uint64 sampleTime = (unit->mWorld->mBufCounter * unit->mWorld->mBufLength) + unit->mWorld->mSampleOffset;
     const auto time = unit->mHostTimeFilter.sampleTimeToHostTime(sampleTime) + gLatency;
+#endif
     auto timeline = gLink->captureAudioSessionState();
     const double currentBeat = timeline.beatAtTime(time, 4);
     const double currentTempo = timeline.tempo();
